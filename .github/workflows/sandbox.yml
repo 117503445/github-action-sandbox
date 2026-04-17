@@ -65,14 +65,22 @@ jobs:
           METADATA_PATH: ${{ runner.temp }}/sandbox-metadata.json
           LOG_PATH: ${{ runner.temp }}/sandbox-host.log
           PID_PATH: ${{ runner.temp }}/sandbox-host.pid
+          WORKDIR: ${{ github.workspace }}
         run: |
           set -euo pipefail
           rm -f "$METADATA_PATH" "$LOG_PATH" "$PID_PATH"
-          nohup sudo env PATH="$PATH" HOME=/root ./bin/sandbox-host \
-            --request-id "$REQUEST_ID" \
-            --upterm-server "$UPTERM_SERVER" \
-            --metadata-path "$METADATA_PATH" \
-            --startup-timeout "${STARTUP_TIMEOUT_SECONDS}s" \
+          HELPER_PATH="$WORKDIR/bin/sandbox-host"
+          nohup sudo env PATH="$PATH" HOME=/root WORKDIR="$WORKDIR" \
+            bash -lc 'cd "$WORKDIR" && exec "$0" \
+              --request-id "$1" \
+              --upterm-server "$2" \
+              --metadata-path "$3" \
+              --startup-timeout "$4"' \
+            "$HELPER_PATH" \
+            "$REQUEST_ID" \
+            "$UPTERM_SERVER" \
+            "$METADATA_PATH" \
+            "${STARTUP_TIMEOUT_SECONDS}s" \
             >"$LOG_PATH" 2>&1 &
           echo $! > "$PID_PATH"
 
@@ -80,10 +88,21 @@ jobs:
         env:
           METADATA_PATH: ${{ runner.temp }}/sandbox-metadata.json
           STARTUP_TIMEOUT_SECONDS: ${{ inputs.startup_timeout_seconds }}
+          LOG_PATH: ${{ runner.temp }}/sandbox-host.log
         run: |
           set -euo pipefail
-          timeout "${STARTUP_TIMEOUT_SECONDS}s" bash -c 'until [ -s "$METADATA_PATH" ]; do sleep 1; done'
-          cat "$METADATA_PATH"
+          for _ in $(seq 1 "$STARTUP_TIMEOUT_SECONDS"); do
+            if [ -s "$METADATA_PATH" ]; then
+              cat "$METADATA_PATH"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "metadata file was not created in time" >&2
+          if [ -f "$LOG_PATH" ]; then
+            cat "$LOG_PATH" >&2
+          fi
+          exit 1
 
       - name: Upload metadata artifact
         uses: actions/upload-artifact@v4
