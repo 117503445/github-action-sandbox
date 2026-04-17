@@ -73,7 +73,9 @@ func run() error {
 	}
 
 	fmt.Printf(
-		"cleanup: freed=%s speed=%s duration=%s\n",
+		"cleanup: available_before=%s available_after=%s freed=%s speed=%s duration=%s\n",
+		formatBytes(report.AvailableBytesBefore),
+		formatBytes(report.AvailableBytesAfter),
 		formatBytes(report.FreedBytes),
 		formatSpeed(report.FreedBytes, report.Duration),
 		formatDuration(report.Duration),
