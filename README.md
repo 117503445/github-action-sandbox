@@ -1,6 +1,6 @@
 # github-action-sandbox
 
-一个用于管理 Sandbox 的 Go SDK 最小工程骨架。
+一个用于创建和关闭 GitHub Actions sandbox 的 Go SDK。
 
 ## 快速开始
 
@@ -24,6 +24,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github-action-sandbox/sdk/sandbox"
 )
@@ -31,7 +32,8 @@ import (
 func main() {
 	opts := sandbox.DefaultCreateSandboxOptions()
 	opts.Name = "demo"
-	opts.Image = "ubuntu:22.04"
+	opts.GitHubRepository = "owner/repo"
+	opts.GitHubToken = os.Getenv("GITHUB_TOKEN")
 
 	item, err := sandbox.CreateSandbox(context.Background(), opts)
 	if err != nil {
@@ -39,8 +41,10 @@ func main() {
 		return
 	}
 
-	fmt.Println("sandbox:", item.ID, item.Status)
+	fmt.Println("ssh:", item.SSHCommand)
+
+	if err := item.Close(context.Background()); err != nil {
+		fmt.Println("close sandbox failed:", err)
+	}
 }
 ```
-
-> 当前 `CreateSandbox` 为占位实现，会返回 `sandbox: not implemented`。API 签名已固定，便于后续向后兼容迭代。

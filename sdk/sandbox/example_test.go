@@ -1,22 +1,20 @@
 package sandbox_test
 
 import (
-	"context"
 	"fmt"
 
 	"github-action-sandbox/sdk/sandbox"
 )
 
-func ExampleCreateSandbox() {
+func ExampleDefaultCreateSandboxOptions() {
 	opts := sandbox.DefaultCreateSandboxOptions()
-	opts.Name = "demo"
-	opts.Image = "ubuntu:22.04"
 
-	item, err := sandbox.CreateSandbox(context.Background(), opts)
-	if err != nil {
-		fmt.Println("create failed")
-		return
-	}
+	fmt.Println(opts.GitHubWorkflow)
+	fmt.Println(opts.GitHubRef)
+	fmt.Println(opts.UptermServer)
 
-	fmt.Println(item.ID, item.Status)
+	// Output:
+	// sandbox.yml
+	// main
+	// ssh://uptermd.upterm.dev:22
 }

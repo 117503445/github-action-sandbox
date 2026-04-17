@@ -3,6 +3,9 @@ package sandbox
 import "errors"
 
 var (
-	// ErrNotImplemented 表示当前能力尚未实现。
-	ErrNotImplemented = errors.New("sandbox: not implemented")
+	ErrInvalidOptions       = errors.New("sandbox: invalid options")
+	ErrWorkflowDispatch     = errors.New("sandbox: workflow dispatch failed")
+	ErrWorkflowStartTimeout = errors.New("sandbox: workflow start timeout")
+	ErrMetadataTimeout      = errors.New("sandbox: metadata not published")
+	ErrSandboxFailed        = errors.New("sandbox: workflow failed before sandbox was ready")
 )

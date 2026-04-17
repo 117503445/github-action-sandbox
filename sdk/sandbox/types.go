@@ -1,14 +1,42 @@
 package sandbox
 
-// Sandbox 表示创建后的通用沙箱对象。
+import (
+	"time"
+
+	"github-action-sandbox/internal/githubactions"
+)
+
+// Sandbox 表示一个已创建的 GitHub Actions sandbox。
 type Sandbox struct {
 	ID     string
 	Status string
+
+	Repository string
+	Workflow   string
+	Ref        string
+	RunID      int64
+	RunURL     string
+
+	SSHHost    string
+	SSHPort    int
+	SSHUser    string
+	SSHCommand string
+
+	CreatedAt time.Time
+
+	client *githubactions.Client
 }
 
-// CreateSandboxOptions 定义创建沙箱所需的输入参数。
+// CreateSandboxOptions 定义创建 sandbox 所需的输入参数。
 type CreateSandboxOptions struct {
-	Name   string
-	Region string
-	Image  string
+	Name string
+
+	GitHubRepository string
+	GitHubWorkflow   string
+	GitHubRef        string
+	GitHubToken      string
+
+	UptermServer string
+
+	StartupTimeout time.Duration
 }

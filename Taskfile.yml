@@ -1,0 +1,10 @@
+version: "3"
+
+tasks:
+  format:
+    cmds:
+      - gofmt -w $(find . -name '*.go' -not -path './vendor/*')
+
+  test:
+    cmds:
+      - go test ./...

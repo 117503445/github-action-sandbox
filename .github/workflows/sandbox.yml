@@ -1,0 +1,113 @@
+name: Sandbox
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: Unique sandbox request ID
+        required: true
+        type: string
+      upterm_server:
+        description: Upterm server address
+        required: false
+        default: ssh://uptermd.upterm.dev:22
+        type: string
+      startup_timeout_seconds:
+        description: Timeout for publishing metadata
+        required: false
+        default: "120"
+        type: string
+
+run-name: sandbox-${{ inputs.request_id }}
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install upterm
+        env:
+          UPTERM_VERSION: v0.22.0
+        run: |
+          set -euo pipefail
+          tmpdir="$(mktemp -d)"
+          trap 'rm -rf "$tmpdir"' EXIT
+          cd "$tmpdir"
+          curl -fsSL -o upterm_linux_amd64.tar.gz \
+            "https://github.com/owenthereal/upterm/releases/download/${UPTERM_VERSION}/upterm_linux_amd64.tar.gz"
+          tar -xzf upterm_linux_amd64.tar.gz
+          sudo install -m 0755 upterm /usr/local/bin/upterm
+          upterm version
+
+      - name: Build sandbox host
+        run: |
+          set -euo pipefail
+          mkdir -p ./bin
+          go build -o ./bin/sandbox-host ./cmd/sandbox-host
+
+      - name: Start sandbox host
+        env:
+          REQUEST_ID: ${{ inputs.request_id }}
+          UPTERM_SERVER: ${{ inputs.upterm_server }}
+          STARTUP_TIMEOUT_SECONDS: ${{ inputs.startup_timeout_seconds }}
+          METADATA_PATH: ${{ runner.temp }}/sandbox-metadata.json
+          LOG_PATH: ${{ runner.temp }}/sandbox-host.log
+          PID_PATH: ${{ runner.temp }}/sandbox-host.pid
+        run: |
+          set -euo pipefail
+          rm -f "$METADATA_PATH" "$LOG_PATH" "$PID_PATH"
+          nohup sudo env PATH="$PATH" HOME=/root ./bin/sandbox-host \
+            --request-id "$REQUEST_ID" \
+            --upterm-server "$UPTERM_SERVER" \
+            --metadata-path "$METADATA_PATH" \
+            --startup-timeout "${STARTUP_TIMEOUT_SECONDS}s" \
+            >"$LOG_PATH" 2>&1 &
+          echo $! > "$PID_PATH"
+
+      - name: Wait for metadata
+        env:
+          METADATA_PATH: ${{ runner.temp }}/sandbox-metadata.json
+          STARTUP_TIMEOUT_SECONDS: ${{ inputs.startup_timeout_seconds }}
+        run: |
+          set -euo pipefail
+          timeout "${STARTUP_TIMEOUT_SECONDS}s" bash -c 'until [ -s "$METADATA_PATH" ]; do sleep 1; done'
+          cat "$METADATA_PATH"
+
+      - name: Upload metadata artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-${{ inputs.request_id }}
+          path: ${{ runner.temp }}/sandbox-metadata.json
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Wait for sandbox shutdown
+        env:
+          PID_PATH: ${{ runner.temp }}/sandbox-host.pid
+        run: |
+          set -euo pipefail
+          pid="$(cat "$PID_PATH")"
+          while kill -0 "$pid" 2>/dev/null; do
+            sleep 5
+          done
+
+      - name: Show sandbox host log
+        if: always()
+        env:
+          LOG_PATH: ${{ runner.temp }}/sandbox-host.log
+        run: |
+          if [ -f "$LOG_PATH" ]; then
+            cat "$LOG_PATH"
+          fi

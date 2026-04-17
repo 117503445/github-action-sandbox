@@ -1,8 +1,13 @@
 package sandbox
 
-// DefaultCreateSandboxOptions 返回创建沙箱的默认参数。
+import "time"
+
+// DefaultCreateSandboxOptions 返回创建 sandbox 的默认参数。
 func DefaultCreateSandboxOptions() CreateSandboxOptions {
 	return CreateSandboxOptions{
-		Region: "us-east-1",
+		GitHubWorkflow: "sandbox.yml",
+		GitHubRef:      "main",
+		UptermServer:   "ssh://uptermd.upterm.dev:22",
+		StartupTimeout: 2 * time.Minute,
 	}
 }
