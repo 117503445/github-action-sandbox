@@ -1,6 +1,6 @@
 # Basic Example
 
-该目录是独立的 Go module。
+该目录是独立的 Go module，直接依赖 GitHub 上固定提交版本的 `github-action-sandbox` 模块，不使用本地 `replace`。
 
 在当前目录准备好 `.env`，或者先导出所需环境变量后直接运行：
 

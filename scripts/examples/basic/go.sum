@@ -1,3 +1,5 @@
+github.com/117503445/github-action-sandbox v0.0.0-20260417160130-e535e375cf7c h1:1UMdbLdX09nivkBSN9HgGgmTdp9qxww6ndmpXZxnfbY=
+github.com/117503445/github-action-sandbox v0.0.0-20260417160130-e535e375cf7c/go.mod h1:QP5VwOC4ref9EZTB1dh11GCdE2pqycBVmzcLF4ug6pE=
 github.com/coreos/go-systemd/v22 v22.5.0/go.mod h1:Y58oyj3AT4RCenI/lSvhwexgC+NSVTIJ3seZv2GcEnc=
 github.com/godbus/dbus/v5 v5.0.4/go.mod h1:xhWf0FNVPg57R7Z0UbKHbJfkEywrmjJnf7w5xrFpKfA=
 github.com/mattn/go-colorable v0.1.13 h1:fFA4WZxdEF4tXPZVKMLwD8oUnCTTo08duU7wxecdEvA=
