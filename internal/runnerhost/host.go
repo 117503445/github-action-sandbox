@@ -49,6 +49,12 @@ func Run(ctx context.Context, opts Options) error {
 		return fmt.Errorf("find upterm: %w", err)
 	}
 
+	privateKeyPath, cleanupKey, err := generatePrivateKey(ctx)
+	if err != nil {
+		return err
+	}
+	defer cleanupKey()
+
 	socketDir := filepath.Join(userHomeDir(), ".upterm")
 	before, err := listSocketCandidates(socketDir)
 	if err != nil {
@@ -59,6 +65,7 @@ func Run(ctx context.Context, opts Options) error {
 		"host",
 		"--accept",
 		"--skip-host-key-check",
+		"--private-key", privateKeyPath,
 		"--server", opts.UptermServer,
 		"--",
 	}
@@ -202,6 +209,30 @@ func userHomeDir() string {
 		return "/root"
 	}
 	return home
+}
+
+func generatePrivateKey(ctx context.Context) (string, func(), error) {
+	sshKeygenPath, err := exec.LookPath("ssh-keygen")
+	if err != nil {
+		return "", nil, fmt.Errorf("find ssh-keygen: %w", err)
+	}
+
+	dir, err := os.MkdirTemp("", "sandbox-host-key-*")
+	if err != nil {
+		return "", nil, err
+	}
+
+	keyPath := filepath.Join(dir, "upterm-host-key")
+	cmd := exec.CommandContext(ctx, sshKeygenPath, "-q", "-t", "ed25519", "-N", "", "-f", keyPath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		_ = os.RemoveAll(dir)
+		return "", nil, fmt.Errorf("generate private key: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+
+	return keyPath, func() {
+		_ = os.RemoveAll(dir)
+	}, nil
 }
 
 func sleepWithContext(ctx context.Context, d time.Duration) error {
