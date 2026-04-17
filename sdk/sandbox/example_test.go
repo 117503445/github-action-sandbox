@@ -3,7 +3,7 @@ package sandbox_test
 import (
 	"fmt"
 
-	"github-action-sandbox/sdk/sandbox"
+	"github.com/117503445/github-action-sandbox/sdk/sandbox"
 )
 
 func ExampleDefaultCreateSandboxOptions() {

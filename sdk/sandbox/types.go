@@ -3,7 +3,7 @@ package sandbox
 import (
 	"time"
 
-	"github-action-sandbox/internal/githubactions"
+	"github.com/117503445/github-action-sandbox/internal/githubactions"
 )
 
 // Sandbox 表示一个已创建的 GitHub Actions sandbox。

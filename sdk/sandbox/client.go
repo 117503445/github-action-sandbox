@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github-action-sandbox/internal/githubactions"
+	"github.com/117503445/github-action-sandbox/internal/githubactions"
 
 	"github.com/rs/zerolog"
 )

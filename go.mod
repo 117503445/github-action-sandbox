@@ -1,4 +1,4 @@
-module github-action-sandbox
+module github.com/117503445/github-action-sandbox
 
 go 1.22
 

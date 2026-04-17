@@ -14,6 +14,7 @@ go mod tidy
 
 ```bash
 go test ./...
+cd scripts/examples/basic && go test ./...
 ```
 
 ## 最小调用示例
@@ -26,7 +27,7 @@ import (
 	"fmt"
 	"os"
 
-	"github-action-sandbox/sdk/sandbox"
+	"github.com/117503445/github-action-sandbox/sdk/sandbox"
 )
 
 func main() {
@@ -48,3 +49,5 @@ func main() {
 	}
 }
 ```
+
+`scripts/examples/basic` 是独立的 Go module，可以直接在该目录执行 `go run .`。

@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github-action-sandbox/internal/runnerhost"
+	"github.com/117503445/github-action-sandbox/internal/runnerhost"
 
 	"github.com/rs/zerolog"
 )
