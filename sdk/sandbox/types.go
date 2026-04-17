@@ -36,6 +36,9 @@ type CreateSandboxOptions struct {
 	GitHubRef        string
 	GitHubToken      string
 
+	PinggyToken string
+
+	// Deprecated: UptermServer is ignored. Use PinggyToken.
 	UptermServer string
 
 	StartupTimeout time.Duration
@@ -48,4 +51,43 @@ type ListSandboxesOptions struct {
 	GitHubToken      string
 
 	Limit int
+}
+
+// FreeDiskSpaceOptions 定义基于 SSH 在 sandbox 内执行磁盘清理时的选项。
+type FreeDiskSpaceOptions struct {
+	Android       bool
+	Dotnet        bool
+	Haskell       bool
+	LargePackages bool
+	DockerImages  bool
+	ToolCache     bool
+	SwapStorage   bool
+}
+
+// DiskCleanupStep 表示一次清理步骤的执行结果。
+type DiskCleanupStep struct {
+	Name string
+
+	StartedAt   time.Time
+	CompletedAt time.Time
+	Duration    time.Duration
+
+	AvailableBytesBefore int64
+	AvailableBytesAfter  int64
+	FreedBytes           int64
+
+	Command string
+}
+
+// FreeDiskSpaceResult 汇总一次磁盘清理的结果。
+type FreeDiskSpaceResult struct {
+	StartedAt   time.Time
+	CompletedAt time.Time
+	Duration    time.Duration
+
+	AvailableBytesBefore int64
+	AvailableBytesAfter  int64
+	FreedBytes           int64
+
+	Steps []DiskCleanupStep
 }

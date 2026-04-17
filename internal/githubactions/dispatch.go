@@ -45,7 +45,7 @@ func (c *Client) DispatchWorkflow(
 	workflow string,
 	ref string,
 	requestID string,
-	uptermServer string,
+	pinggyToken string,
 	startupTimeout time.Duration,
 ) error {
 	seconds := int(math.Ceil(startupTimeout.Seconds()))
@@ -53,7 +53,7 @@ func (c *Client) DispatchWorkflow(
 		"ref": ref,
 		"inputs": map[string]string{
 			"request_id":              requestID,
-			"upterm_server":           uptermServer,
+			"pinggy_token":            pinggyToken,
 			"startup_timeout_seconds": fmt.Sprintf("%d", seconds),
 		},
 	}

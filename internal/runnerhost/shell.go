@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 )
 
-// Shell describes the interactive shell hosted inside upterm.
+// Shell describes the shell exposed through sshdev.
 type Shell struct {
 	Path string
 	Args []string
 }
 
-// Command returns the argv used after the `--` separator in `upterm host`.
+// Command returns the argv for launching the shell directly.
 func (s Shell) Command() []string {
 	args := []string{s.Path}
 	args = append(args, s.Args...)

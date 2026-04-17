@@ -2,14 +2,10 @@ package runnerhost
 
 import "testing"
 
-func TestMetadataFromSession(t *testing.T) {
-	metadata, err := metadataFromSession("req-1", currentSession{
-		SessionID: "session-token",
-		Host:      "ssh://uptermd.upterm.dev:22",
-		Command:   "/bin/bash -il",
-	})
+func TestMetadataFromPublicURL(t *testing.T) {
+	metadata, err := metadataFromPublicURL("req-1", "root", "tcp://demo.a.pinggy.link:43000")
 	if err != nil {
-		t.Fatalf("metadataFromSession returned error: %v", err)
+		t.Fatalf("metadataFromPublicURL returned error: %v", err)
 	}
 
 	if metadata.RequestID != "req-1" {
@@ -18,22 +14,19 @@ func TestMetadataFromSession(t *testing.T) {
 	if metadata.Status != "running" {
 		t.Fatalf("unexpected status: %q", metadata.Status)
 	}
-	if metadata.SSHHost != "uptermd.upterm.dev" || metadata.SSHPort != 22 {
+	if metadata.SSHHost != "demo.a.pinggy.link" || metadata.SSHPort != 43000 {
 		t.Fatalf("unexpected ssh endpoint: %+v", metadata)
 	}
-	if metadata.SSHUser != "session-token" {
+	if metadata.SSHUser != "root" {
 		t.Fatalf("unexpected ssh user: %q", metadata.SSHUser)
 	}
-	if metadata.SSHCommand != "ssh -p 22 session-token@uptermd.upterm.dev" {
+	if metadata.SSHCommand != "ssh -p 43000 root@demo.a.pinggy.link" {
 		t.Fatalf("unexpected ssh command: %q", metadata.SSHCommand)
 	}
 }
 
-func TestMetadataFromSessionRejectsUnsupportedScheme(t *testing.T) {
-	_, err := metadataFromSession("req-1", currentSession{
-		SessionID: "session-token",
-		Host:      "wss://uptermd.example.com",
-	})
+func TestMetadataFromPublicURLRejectsUnsupportedScheme(t *testing.T) {
+	_, err := metadataFromPublicURL("req-1", "root", "https://demo.a.pinggy.link:43000")
 	if err == nil {
 		t.Fatal("expected error for unsupported scheme")
 	}

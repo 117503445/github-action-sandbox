@@ -4,6 +4,8 @@ import (
 	"context"
 	"flag"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/117503445/github-action-sandbox/internal/runnerhost"
@@ -14,18 +16,20 @@ import (
 func main() {
 	var (
 		requestID      = flag.String("request-id", "", "workflow request id")
-		uptermServer   = flag.String("upterm-server", "ssh://uptermd.upterm.dev:22", "upterm server")
+		pinggyToken    = flag.String("pinggy-token", "", "optional pinggy token")
 		metadataPath   = flag.String("metadata-path", "", "path to metadata json output")
 		startupTimeout = flag.Duration("startup-timeout", 2*time.Minute, "time limit for publishing metadata")
 	)
 	flag.Parse()
 
 	logger := zerolog.New(os.Stderr).With().Timestamp().Logger()
-	ctx := logger.WithContext(context.Background())
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	ctx = logger.WithContext(ctx)
 
 	if err := runnerhost.Run(ctx, runnerhost.Options{
 		RequestID:      *requestID,
-		UptermServer:   *uptermServer,
+		PinggyToken:    *pinggyToken,
 		MetadataPath:   *metadataPath,
 		StartupTimeout: *startupTimeout,
 	}); err != nil {

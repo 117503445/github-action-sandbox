@@ -11,12 +11,12 @@ func ExampleDefaultCreateSandboxOptions() {
 
 	fmt.Println(opts.GitHubWorkflow)
 	fmt.Println(opts.GitHubRef)
-	fmt.Println(opts.UptermServer)
+	fmt.Printf("%q\n", opts.PinggyToken)
 
 	// Output:
 	// sandbox.yml
 	// main
-	// ssh://uptermd.upterm.dev:22
+	// ""
 }
 
 func ExampleDefaultListSandboxesOptions() {
@@ -28,4 +28,15 @@ func ExampleDefaultListSandboxesOptions() {
 	// Output:
 	// sandbox.yml
 	// 20
+}
+
+func ExampleDefaultFreeDiskSpaceOptions() {
+	opts := sandbox.DefaultFreeDiskSpaceOptions()
+
+	fmt.Println(opts.Android)
+	fmt.Println(opts.ToolCache)
+
+	// Output:
+	// true
+	// false
 }

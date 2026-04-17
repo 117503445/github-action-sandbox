@@ -11,39 +11,37 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func TestRunWritesMetadataFromFakeUpterm(t *testing.T) {
+func TestRunWritesMetadataFromFakeSSHDevAndPinggy(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
 	fakeBin := t.TempDir()
-	fakeUptermPath := filepath.Join(fakeBin, "upterm")
-	fakeScript := `#!/bin/sh
+	fakeSSHDevPath := filepath.Join(fakeBin, "sshdev")
+	fakeSSHPath := filepath.Join(fakeBin, "ssh")
+
+	fakeSSHDevScript := `#!/bin/sh
 set -eu
-cmd="$1"
-shift
-case "$cmd" in
-  host)
-    echo "Session: fake-session"
-    echo
-    echo "Command:          bash -il"
-    echo "Host:             ssh://uptermd.upterm.dev:22"
-    trap 'exit 0' TERM INT
-    while :; do sleep 1; done
-    ;;
-  session)
-    sub="$1"
-    shift
-    if [ "$sub" != "current" ]; then
-      exit 1
-    fi
-    echo '{"sessionId":"fake-session","host":"ssh://uptermd.upterm.dev:22","command":"bash -il","forceCommand":""}'
-    ;;
-  *)
-    exit 1
-    ;;
-esac
+exec python3 -m http.server 2222 --bind 127.0.0.1 >/dev/null 2>&1
 `
-	if err := os.WriteFile(fakeUptermPath, []byte(fakeScript), 0o755); err != nil {
-		t.Fatalf("write fake upterm: %v", err)
+	if err := os.WriteFile(fakeSSHDevPath, []byte(fakeSSHDevScript), 0o755); err != nil {
+		t.Fatalf("write fake sshdev: %v", err)
+	}
+
+	fakeSSHScript := `#!/bin/sh
+set -eu
+last=""
+for arg in "$@"; do
+  last="$arg"
+done
+if [ "$last" != "tcp@a.pinggy.io" ]; then
+  echo "unexpected target: $last" >&2
+  exit 1
+fi
+echo "tcp://demo.a.pinggy.link:43000"
+trap 'exit 0' TERM INT
+while :; do sleep 1; done
+`
+	if err := os.WriteFile(fakeSSHPath, []byte(fakeSSHScript), 0o755); err != nil {
+		t.Fatalf("write fake ssh: %v", err)
 	}
 
 	origPath := os.Getenv("PATH")
@@ -58,13 +56,13 @@ esac
 	go func() {
 		runErrCh <- Run(ctx, Options{
 			RequestID:      "req-123",
-			UptermServer:   "ssh://uptermd.upterm.dev:22",
 			MetadataPath:   metadataPath,
-			StartupTimeout: 2 * time.Second,
+			StartupTimeout: 4 * time.Second,
 		})
 	}()
 
-	deadline := time.Now().Add(3 * time.Second)
+	expectedUser := currentSSHUser()
+	deadline := time.Now().Add(5 * time.Second)
 	for {
 		if time.Now().After(deadline) {
 			t.Fatal("timed out waiting for metadata")
@@ -72,7 +70,10 @@ esac
 		data, err := os.ReadFile(metadataPath)
 		if err == nil {
 			content := string(data)
-			if !strings.Contains(content, `"ssh_user": "fake-session"`) {
+			if !strings.Contains(content, `"ssh_host": "demo.a.pinggy.link"`) {
+				t.Fatalf("unexpected metadata content: %s", content)
+			}
+			if !strings.Contains(content, `"ssh_command": "ssh -p 43000 `+expectedUser+`@demo.a.pinggy.link"`) {
 				t.Fatalf("unexpected metadata content: %s", content)
 			}
 			break
@@ -87,7 +88,7 @@ esac
 		if err == nil {
 			t.Fatal("expected context cancellation error")
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for Run to finish")
 	}
 }

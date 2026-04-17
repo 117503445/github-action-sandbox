@@ -23,8 +23,8 @@ func TestDefaultCreateSandboxOptions(t *testing.T) {
 	if opts.GitHubRef != "main" {
 		t.Fatalf("unexpected ref default: %q", opts.GitHubRef)
 	}
-	if opts.UptermServer != "ssh://uptermd.upterm.dev:22" {
-		t.Fatalf("unexpected upterm server default: %q", opts.UptermServer)
+	if opts.PinggyToken != "" {
+		t.Fatalf("unexpected pinggy token default: %q", opts.PinggyToken)
 	}
 	if opts.StartupTimeout != 2*time.Minute {
 		t.Fatalf("unexpected timeout default: %s", opts.StartupTimeout)
@@ -120,10 +120,10 @@ func TestListSandboxesReturnsRecentRunsAndMetadata(t *testing.T) {
 			if _, err := w.Write(buildMetadataArchive(t, sandboxMetadata{
 				RequestID:  "demo-123",
 				Status:     "running",
-				SSHHost:    "uptermd.upterm.dev",
-				SSHPort:    22,
-				SSHUser:    "session-token",
-				SSHCommand: "ssh -p 22 session-token@uptermd.upterm.dev",
+				SSHHost:    "demo.a.pinggy.link",
+				SSHPort:    43000,
+				SSHUser:    "root",
+				SSHCommand: "ssh -p 43000 root@demo.a.pinggy.link",
 			})); err != nil {
 				t.Fatalf("write archive: %v", err)
 			}
@@ -156,7 +156,7 @@ func TestListSandboxesReturnsRecentRunsAndMetadata(t *testing.T) {
 	if first.Ref != "main" {
 		t.Fatalf("unexpected first sandbox ref: %q", first.Ref)
 	}
-	if first.SSHCommand != "ssh -p 22 session-token@uptermd.upterm.dev" {
+	if first.SSHCommand != "ssh -p 43000 root@demo.a.pinggy.link" {
 		t.Fatalf("unexpected first sandbox ssh command: %q", first.SSHCommand)
 	}
 
@@ -247,10 +247,10 @@ func TestCreateSandboxDispatchesWorkflowAndReturnsMetadata(t *testing.T) {
 			if _, err := w.Write(buildMetadataArchive(t, sandboxMetadata{
 				RequestID:  state.dispatchBody.Inputs["request_id"],
 				Status:     "running",
-				SSHHost:    "uptermd.upterm.dev",
-				SSHPort:    22,
-				SSHUser:    "session-token",
-				SSHCommand: "ssh -p 22 session-token@uptermd.upterm.dev",
+				SSHHost:    "demo.a.pinggy.link",
+				SSHPort:    43000,
+				SSHUser:    "root",
+				SSHCommand: "ssh -p 43000 root@demo.a.pinggy.link",
 			})); err != nil {
 				t.Fatalf("write archive: %v", err)
 			}
@@ -269,7 +269,7 @@ func TestCreateSandboxDispatchesWorkflowAndReturnsMetadata(t *testing.T) {
 		GitHubWorkflow:   "custom.yml",
 		GitHubRef:        "feature/demo",
 		GitHubToken:      "opts-token",
-		UptermServer:     "ssh://custom.upterm.dev:2222",
+		PinggyToken:      "pinggy-token",
 		StartupTimeout:   2 * time.Second,
 	})
 	if err != nil {
@@ -288,10 +288,10 @@ func TestCreateSandboxDispatchesWorkflowAndReturnsMetadata(t *testing.T) {
 	if sbx.RunID != 123 || sbx.RunURL != "https://example.test/runs/123" {
 		t.Fatalf("unexpected run info: %+v", sbx)
 	}
-	if sbx.SSHHost != "uptermd.upterm.dev" || sbx.SSHPort != 22 || sbx.SSHUser != "session-token" {
+	if sbx.SSHHost != "demo.a.pinggy.link" || sbx.SSHPort != 43000 || sbx.SSHUser != "root" {
 		t.Fatalf("unexpected ssh info: %+v", sbx)
 	}
-	if sbx.SSHCommand != "ssh -p 22 session-token@uptermd.upterm.dev" {
+	if sbx.SSHCommand != "ssh -p 43000 root@demo.a.pinggy.link" {
 		t.Fatalf("unexpected ssh command: %q", sbx.SSHCommand)
 	}
 
@@ -306,8 +306,8 @@ func TestCreateSandboxDispatchesWorkflowAndReturnsMetadata(t *testing.T) {
 	if state.dispatchBody.Inputs["request_id"] != sbx.ID {
 		t.Fatalf("dispatch request_id mismatch: %q vs %q", state.dispatchBody.Inputs["request_id"], sbx.ID)
 	}
-	if state.dispatchBody.Inputs["upterm_server"] != "ssh://custom.upterm.dev:2222" {
-		t.Fatalf("unexpected upterm server input: %q", state.dispatchBody.Inputs["upterm_server"])
+	if state.dispatchBody.Inputs["pinggy_token"] != "pinggy-token" {
+		t.Fatalf("unexpected pinggy token input: %q", state.dispatchBody.Inputs["pinggy_token"])
 	}
 	if state.dispatchBody.Inputs["startup_timeout_seconds"] != "2" {
 		t.Fatalf("unexpected startup timeout input: %q", state.dispatchBody.Inputs["startup_timeout_seconds"])
@@ -494,6 +494,67 @@ func TestCloseCancelsRunAndWaitsForCompletion(t *testing.T) {
 	defer state.Unlock()
 	if state.cancelCalls != 1 {
 		t.Fatalf("expected one cancel call, got %d", state.cancelCalls)
+	}
+}
+
+func TestCloseReturnsSuccessWhenRunAlreadyCompleted(t *testing.T) {
+	var state struct {
+		sync.Mutex
+		cancelCalls int
+		runCalls    int
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		state.Lock()
+		defer state.Unlock()
+
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/acme/widgets/actions/runs/123/cancel":
+			state.cancelCalls++
+			w.WriteHeader(http.StatusConflict)
+			writeJSON(t, w, map[string]any{
+				"message": "Cannot cancel a workflow run that is completed.",
+				"status":  "409",
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/widgets/actions/runs/123":
+			state.runCalls++
+			writeJSON(t, w, map[string]any{
+				"id":         int64(123),
+				"status":     "completed",
+				"conclusion": "success",
+				"html_url":   "https://example.test/runs/123",
+			})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	t.Setenv("GITHUB_API_URL", server.URL)
+
+	sbx := &Sandbox{
+		Repository: "acme/widgets",
+		RunID:      123,
+		client:     newGitHubActionsClient("acme/widgets", "token"),
+	}
+
+	if err := sbx.Close(context.Background()); err != nil {
+		t.Fatalf("Close returned error: %v", err)
+	}
+	if sbx.Status != "success" {
+		t.Fatalf("unexpected sandbox status after close: %q", sbx.Status)
+	}
+	if sbx.RunURL != "https://example.test/runs/123" {
+		t.Fatalf("unexpected run url after close: %q", sbx.RunURL)
+	}
+
+	state.Lock()
+	defer state.Unlock()
+	if state.cancelCalls != 1 {
+		t.Fatalf("expected one cancel call, got %d", state.cancelCalls)
+	}
+	if state.runCalls != 1 {
+		t.Fatalf("expected one get run call, got %d", state.runCalls)
 	}
 }
 

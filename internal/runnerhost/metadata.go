@@ -21,43 +21,37 @@ type Metadata struct {
 	SSHCommand string `json:"ssh_command"`
 }
 
-type currentSession struct {
-	SessionID string `json:"sessionId"`
-	Host      string `json:"host"`
-	Command   string `json:"command"`
-}
-
-func metadataFromSession(requestID string, session currentSession) (Metadata, error) {
+func metadataFromPublicURL(requestID string, sshUser string, publicURL string) (Metadata, error) {
 	if strings.TrimSpace(requestID) == "" {
 		return Metadata{}, errors.New("request id is required")
 	}
-	if strings.TrimSpace(session.SessionID) == "" {
-		return Metadata{}, errors.New("session id is required")
+	if strings.TrimSpace(sshUser) == "" {
+		return Metadata{}, errors.New("ssh user is required")
 	}
-	if strings.TrimSpace(session.Host) == "" {
-		return Metadata{}, errors.New("host is required")
+	if strings.TrimSpace(publicURL) == "" {
+		return Metadata{}, errors.New("public url is required")
 	}
 
-	u, err := url.Parse(session.Host)
+	u, err := url.Parse(publicURL)
 	if err != nil {
 		return Metadata{}, err
 	}
-	if u.Scheme != "" && u.Scheme != "ssh" {
-		return Metadata{}, fmt.Errorf("unsupported upterm server scheme %q", u.Scheme)
+	if u.Scheme != "tcp" {
+		return Metadata{}, fmt.Errorf("unsupported pinggy url scheme %q", u.Scheme)
 	}
 
 	host := u.Hostname()
 	if host == "" {
-		return Metadata{}, errors.New("missing upterm host")
+		return Metadata{}, errors.New("missing pinggy host")
+	}
+	rawPort := u.Port()
+	if rawPort == "" {
+		return Metadata{}, errors.New("missing pinggy port")
 	}
 
-	port := 22
-	if rawPort := u.Port(); rawPort != "" {
-		parsed, err := net.LookupPort("tcp", rawPort)
-		if err != nil {
-			return Metadata{}, err
-		}
-		port = parsed
+	port, err := net.LookupPort("tcp", rawPort)
+	if err != nil {
+		return Metadata{}, err
 	}
 
 	return Metadata{
@@ -65,8 +59,8 @@ func metadataFromSession(requestID string, session currentSession) (Metadata, er
 		Status:     "running",
 		SSHHost:    host,
 		SSHPort:    port,
-		SSHUser:    session.SessionID,
-		SSHCommand: fmt.Sprintf("ssh -p %d %s@%s", port, session.SessionID, host),
+		SSHUser:    sshUser,
+		SSHCommand: fmt.Sprintf("ssh -p %d %s@%s", port, sshUser, host),
 	}, nil
 }
 

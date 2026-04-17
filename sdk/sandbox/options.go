@@ -7,7 +7,6 @@ func DefaultCreateSandboxOptions() CreateSandboxOptions {
 	return CreateSandboxOptions{
 		GitHubWorkflow: "sandbox.yml",
 		GitHubRef:      "main",
-		UptermServer:   "ssh://uptermd.upterm.dev:22",
 		StartupTimeout: 2 * time.Minute,
 	}
 }
@@ -17,5 +16,18 @@ func DefaultListSandboxesOptions() ListSandboxesOptions {
 	return ListSandboxesOptions{
 		GitHubWorkflow: "sandbox.yml",
 		Limit:          20,
+	}
+}
+
+// DefaultFreeDiskSpaceOptions 返回基于 SSH 清理磁盘的默认参数。
+func DefaultFreeDiskSpaceOptions() FreeDiskSpaceOptions {
+	return FreeDiskSpaceOptions{
+		Android:       true,
+		Dotnet:        true,
+		Haskell:       true,
+		LargePackages: true,
+		DockerImages:  true,
+		ToolCache:     false,
+		SwapStorage:   true,
 	}
 }

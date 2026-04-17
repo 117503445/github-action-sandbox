@@ -8,4 +8,5 @@ var (
 	ErrWorkflowStartTimeout = errors.New("sandbox: workflow start timeout")
 	ErrMetadataTimeout      = errors.New("sandbox: metadata not published")
 	ErrSandboxFailed        = errors.New("sandbox: workflow failed before sandbox was ready")
+	ErrSSHExecution         = errors.New("sandbox: ssh execution failed")
 )

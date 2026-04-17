@@ -7,6 +7,8 @@ require (
 	github.com/rs/zerolog v1.33.0
 )
 
+replace github.com/117503445/github-action-sandbox => ../../..
+
 require (
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect

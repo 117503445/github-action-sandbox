@@ -82,15 +82,35 @@ func run() error {
 		fmt.Printf("sandbox closed: %s (%s)\n", item.RunURL, item.Status)
 	}()
 
-	sshCtx, sshCancel := context.WithTimeout(context.Background(), 45*time.Second)
-	defer sshCancel()
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cleanupCancel()
 
-	output, err := verifySSH(sshCtx, item)
+	cleanupOpts := sandbox.DefaultFreeDiskSpaceOptions()
+	cleanupReport, err := item.FreeDiskSpace(cleanupCtx, cleanupOpts)
 	if err != nil {
-		return err
+		return fmt.Errorf("free disk space: %w", err)
 	}
 
-	fmt.Printf("ssh verification passed\n%s\n", output)
+	fmt.Printf(
+		"disk cleanup passed: before=%dB after=%dB freed=%dB duration=%s\n",
+		cleanupReport.AvailableBytesBefore,
+		cleanupReport.AvailableBytesAfter,
+		cleanupReport.FreedBytes,
+		cleanupReport.Duration,
+	)
+	for _, step := range cleanupReport.Steps {
+		fmt.Printf(
+			"  - %s: start=%s end=%s duration=%s before=%dB after=%dB freed=%dB\n",
+			step.Name,
+			step.StartedAt.Format(time.RFC3339),
+			step.CompletedAt.Format(time.RFC3339),
+			step.Duration,
+			step.AvailableBytesBefore,
+			step.AvailableBytesAfter,
+			step.FreedBytes,
+		)
+	}
+
 	return nil
 }
 

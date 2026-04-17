@@ -29,7 +29,7 @@ type resolvedCreateSandboxOptions struct {
 	GitHubRef        string
 	GitHubToken      string
 
-	UptermServer string
+	PinggyToken string
 
 	StartupTimeout time.Duration
 }
@@ -68,7 +68,7 @@ func CreateSandbox(ctx context.Context, opts CreateSandboxOptions) (*Sandbox, er
 		resolved.GitHubWorkflow,
 		resolved.GitHubRef,
 		requestID,
-		resolved.UptermServer,
+		resolved.PinggyToken,
 		resolved.StartupTimeout,
 	); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrWorkflowDispatch, err)
@@ -150,6 +150,21 @@ func (s *Sandbox) Close(ctx context.Context) error {
 	logger.Info().Int64("run_id", s.RunID).Msg("canceling sandbox workflow run")
 
 	if err := client.CancelWorkflowRun(ctx, s.RunID); err != nil {
+		run, getErr := client.GetWorkflowRun(ctx, s.RunID)
+		if getErr == nil && run.Status == "completed" {
+			s.Status = run.EffectiveStatus()
+			if run.HTMLURL != "" {
+				s.RunURL = run.HTMLURL
+			}
+
+			logger.Info().
+				Int64("run_id", s.RunID).
+				Str("status", s.Status).
+				Msg("sandbox already completed before cancel")
+
+			return nil
+		}
+
 		return err
 	}
 
@@ -180,7 +195,7 @@ func resolveCreateSandboxOptions(opts CreateSandboxOptions) (resolvedCreateSandb
 		GitHubWorkflow:   strings.TrimSpace(opts.GitHubWorkflow),
 		GitHubRef:        strings.TrimSpace(opts.GitHubRef),
 		GitHubToken:      strings.TrimSpace(opts.GitHubToken),
-		UptermServer:     strings.TrimSpace(opts.UptermServer),
+		PinggyToken:      strings.TrimSpace(opts.PinggyToken),
 		StartupTimeout:   opts.StartupTimeout,
 	}
 
@@ -189,9 +204,6 @@ func resolveCreateSandboxOptions(opts CreateSandboxOptions) (resolvedCreateSandb
 	}
 	if resolved.GitHubRef == "" {
 		resolved.GitHubRef = defaults.GitHubRef
-	}
-	if resolved.UptermServer == "" {
-		resolved.UptermServer = defaults.UptermServer
 	}
 	if resolved.StartupTimeout == 0 {
 		resolved.StartupTimeout = defaults.StartupTimeout
@@ -211,9 +223,6 @@ func resolveCreateSandboxOptions(opts CreateSandboxOptions) (resolvedCreateSandb
 	}
 	if resolved.GitHubToken == "" {
 		return resolvedCreateSandboxOptions{}, fmt.Errorf("%w: missing GitHub token", ErrInvalidOptions)
-	}
-	if resolved.UptermServer == "" {
-		return resolvedCreateSandboxOptions{}, fmt.Errorf("%w: missing upterm server", ErrInvalidOptions)
 	}
 	if resolved.StartupTimeout <= 0 {
 		return resolvedCreateSandboxOptions{}, fmt.Errorf("%w: startup timeout must be positive", ErrInvalidOptions)

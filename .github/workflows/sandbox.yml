@@ -7,10 +7,10 @@ on:
         description: Unique sandbox request ID
         required: true
         type: string
-      upterm_server:
-        description: Upterm server address
+      pinggy_token:
+        description: Optional Pinggy token for authenticated tunnels
         required: false
-        default: ssh://uptermd.upterm.dev:22
+        default: ""
         type: string
       startup_timeout_seconds:
         description: Timeout for publishing metadata
@@ -37,19 +37,16 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Install upterm
-        env:
-          UPTERM_VERSION: v0.22.0
+      - name: Install sshdev
         run: |
           set -euo pipefail
           tmpdir="$(mktemp -d)"
           trap 'rm -rf "$tmpdir"' EXIT
-          cd "$tmpdir"
-          curl -fsSL -o upterm_linux_amd64.tar.gz \
-            "https://github.com/owenthereal/upterm/releases/download/${UPTERM_VERSION}/upterm_linux_amd64.tar.gz"
-          tar -xzf upterm_linux_amd64.tar.gz
-          sudo install -m 0755 upterm /usr/local/bin/upterm
-          upterm version
+          git clone --depth=1 https://github.com/117503445/sshdev "$tmpdir/sshdev"
+          cd "$tmpdir/sshdev"
+          CGO_ENABLED=0 go build -o sshdev ./cmd/sshdev
+          sudo install -m 0755 sshdev /usr/local/bin/sshdev
+          sshdev run --help | sed -n '1,20p'
 
       - name: Build sandbox host
         run: |
@@ -60,7 +57,7 @@ jobs:
       - name: Start sandbox host
         env:
           REQUEST_ID: ${{ inputs.request_id }}
-          UPTERM_SERVER: ${{ inputs.upterm_server }}
+          PINGGY_TOKEN: ${{ inputs.pinggy_token }}
           STARTUP_TIMEOUT_SECONDS: ${{ inputs.startup_timeout_seconds }}
           METADATA_PATH: ${{ runner.temp }}/sandbox-metadata.json
           LOG_PATH: ${{ runner.temp }}/sandbox-host.log
@@ -73,12 +70,12 @@ jobs:
           nohup sudo env PATH="$PATH" HOME=/root WORKDIR="$WORKDIR" \
             bash -lc 'cd "$WORKDIR" && exec "$0" \
               --request-id "$1" \
-              --upterm-server "$2" \
+              --pinggy-token "$2" \
               --metadata-path "$3" \
               --startup-timeout "$4"' \
             "$HELPER_PATH" \
             "$REQUEST_ID" \
-            "$UPTERM_SERVER" \
+            "$PINGGY_TOKEN" \
             "$METADATA_PATH" \
             "${STARTUP_TIMEOUT_SECONDS}s" \
             >"$LOG_PATH" 2>&1 &
