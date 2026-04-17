@@ -264,9 +264,9 @@ func defaultSSHScriptRunner(ctx context.Context, s *Sandbox, script string) (ssh
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "LogLevel=ERROR",
-		"-tt",
 		"-p", strconv.Itoa(s.SSHPort),
 		fmt.Sprintf("%s@%s", s.SSHUser, s.SSHHost),
+		"sh -se",
 	}
 
 	cmd := exec.CommandContext(ctx, sshPath, args...)
@@ -300,37 +300,31 @@ func defaultSSHScriptRunner(ctx context.Context, s *Sandbox, script string) (ssh
 	go streamSSHOutput(stdoutPipe, io.MultiWriter(&stdout, &combined), streamErrCh)
 	go streamSSHOutput(stderrPipe, io.MultiWriter(&stderr, &combined), streamErrCh)
 
-	proc := sshProcessState{waitCh: waitCh}
-	if err := waitForSSHSessionReady(ctx, &combined, &proc, 2*time.Second); err != nil {
+	if _, err := io.WriteString(stdin, script+"\n"); err != nil {
 		_ = stdin.Close()
-		_ = proc.Wait()
-		_ = waitForOutputStreams(streamErrCh, 2)
-		return sshCommandOutput{}, fmt.Errorf("%w: %v", ErrSSHExecution, err)
-	}
-
-	doneMarker := fmt.Sprintf("__GAS_DONE__%d", time.Now().UnixNano())
-	payload := "\n" + script + "\nprintf '" + doneMarker + "\\n'\n"
-	if _, err := io.WriteString(stdin, payload); err != nil {
-		_ = stdin.Close()
-		_ = proc.Wait()
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		_ = <-waitCh
 		_ = waitForOutputStreams(streamErrCh, 2)
 		return sshCommandOutput{}, fmt.Errorf("%w: write ssh script: %v", ErrSSHExecution, err)
 	}
-
-	if err := waitForSSHLineMarker(ctx, &combined, &proc, doneMarker); err != nil {
-		_ = stdin.Close()
-		_ = proc.Wait()
+	if err := stdin.Close(); err != nil {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		_ = <-waitCh
 		_ = waitForOutputStreams(streamErrCh, 2)
-		return sshCommandOutput{}, fmt.Errorf("%w: %v", ErrSSHExecution, err)
+		return sshCommandOutput{}, fmt.Errorf("%w: close ssh stdin: %v", ErrSSHExecution, err)
 	}
 
-	_ = stdin.Close()
-	if cmd.Process != nil {
-		_ = cmd.Process.Kill()
-	}
-	_ = proc.Wait()
+	runErr := <-waitCh
 	if err := waitForOutputStreams(streamErrCh, 2); err != nil {
 		return sshCommandOutput{}, fmt.Errorf("%w: %v", ErrSSHExecution, err)
+	}
+	if runErr != nil {
+		_ = stdin.Close()
+		return sshCommandOutput{}, fmt.Errorf("%w: %v", ErrSSHExecution, runErr)
 	}
 
 	return sshCommandOutput{Stdout: stdout.String(), Stderr: stderr.String()}, nil

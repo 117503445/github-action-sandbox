@@ -8,6 +8,11 @@
 go run .
 ```
 
+常用环境变量：
+
+- `STARTUP_TIMEOUT_SECONDS`：等待 workflow 发布 metadata 的超时，默认 `300`
+- `CLEANUP_TIMEOUT_SECONDS`：等待 `FreeDiskSpace()` 完成的超时，默认 `900`
+
 示例会执行完整链路：
 
 1. 调用 `CreateSandbox`

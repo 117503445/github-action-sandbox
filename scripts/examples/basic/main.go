@@ -41,10 +41,15 @@ func run() error {
 	ref := getenvDefault("GITHUB_REF", "master")
 	name := getenvDefault("SANDBOX_NAME", "basic-example")
 	timeoutSeconds := getenvDefault("STARTUP_TIMEOUT_SECONDS", "300")
+	cleanupTimeoutSeconds := getenvDefault("CLEANUP_TIMEOUT_SECONDS", "900")
 
 	startupTimeout, err := time.ParseDuration(timeoutSeconds + "s")
 	if err != nil {
 		return fmt.Errorf("parse STARTUP_TIMEOUT_SECONDS: %w", err)
+	}
+	cleanupTimeout, err := time.ParseDuration(cleanupTimeoutSeconds + "s")
+	if err != nil {
+		return fmt.Errorf("parse CLEANUP_TIMEOUT_SECONDS: %w", err)
 	}
 
 	item, err := sandbox.CreateSandbox(ctx, sandbox.CreateSandboxOptions{
@@ -72,9 +77,10 @@ func run() error {
 
 	fmt.Printf("list verification passed: run=%d listed=%d ssh=%s\n", item.RunID, len(listed), item.SSHCommand)
 
-	closeCtx, closeCancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer closeCancel()
 	defer func() {
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer closeCancel()
+
 		if err := item.Close(closeCtx); err != nil {
 			fmt.Fprintf(os.Stderr, "close sandbox failed: %v\n", err)
 			return
@@ -82,7 +88,7 @@ func run() error {
 		fmt.Printf("sandbox closed: %s (%s)\n", item.RunURL, item.Status)
 	}()
 
-	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), cleanupTimeout)
 	defer cleanupCancel()
 
 	cleanupOpts := sandbox.DefaultFreeDiskSpaceOptions()
