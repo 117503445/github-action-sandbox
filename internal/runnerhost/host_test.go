@@ -22,8 +22,10 @@ cmd="$1"
 shift
 case "$cmd" in
   host)
-    mkdir -p "$HOME/.upterm"
-    : > "$HOME/.upterm/test.sock"
+    echo "Session: fake-session"
+    echo
+    echo "Command:          bash -il"
+    echo "Host:             ssh://uptermd.upterm.dev:22"
     trap 'exit 0' TERM INT
     while :; do sleep 1; done
     ;;

@@ -1,14 +1,16 @@
 package runnerhost
 
 import (
+	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -55,12 +57,6 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	defer cleanupKey()
 
-	socketDir := filepath.Join(userHomeDir(), ".upterm")
-	before, err := listSocketCandidates(socketDir)
-	if err != nil {
-		return err
-	}
-
 	args := []string{
 		"host",
 		"--accept",
@@ -72,9 +68,16 @@ func Run(ctx context.Context, opts Options) error {
 	args = append(args, shell.Command()...)
 
 	cmd := exec.CommandContext(ctx, uptermPath, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
 	cmd.Env = os.Environ()
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
 
 	logger.Info().
 		Str("request_id", opts.RequestID).
@@ -91,12 +94,12 @@ func Run(ctx context.Context, opts Options) error {
 		waitCh <- cmd.Wait()
 	}()
 
-	socketPath, err := waitForSocket(ctx, waitCh, socketDir, before, opts.StartupTimeout)
-	if err != nil {
-		return err
-	}
+	parser := newSessionOutputParser()
+	streamErrCh := make(chan error, 2)
+	go streamOutput(stdoutPipe, os.Stdout, parser, streamErrCh)
+	go streamOutput(stderrPipe, os.Stderr, parser, streamErrCh)
 
-	session, err := waitForCurrentSession(ctx, uptermPath, socketPath, opts.StartupTimeout)
+	session, err := waitForSession(ctx, waitCh, parser.Ready(), opts.StartupTimeout)
 	if err != nil {
 		return err
 	}
@@ -114,101 +117,111 @@ func Run(ctx context.Context, opts Options) error {
 		Str("ssh_command", metadata.SSHCommand).
 		Msg("sandbox metadata written")
 
-	return <-waitCh
+	runErr := <-waitCh
+
+	for i := 0; i < 2; i++ {
+		if err := <-streamErrCh; err != nil && runErr == nil {
+			runErr = err
+		}
+	}
+
+	return runErr
 }
 
-func waitForSocket(
+func waitForSession(
 	ctx context.Context,
 	waitCh <-chan error,
-	socketDir string,
-	before map[string]struct{},
+	sessionCh <-chan currentSession,
 	timeout time.Duration,
-) (string, error) {
-	deadline := time.Now().Add(timeout)
+) (currentSession, error) {
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			return "", ctx.Err()
+			return currentSession{}, ctx.Err()
 		case err := <-waitCh:
 			if err == nil {
-				return "", errors.New("upterm exited before session socket was ready")
+				return currentSession{}, errors.New("upterm exited before session info was published")
 			}
-			return "", err
-		default:
-		}
-
-		if time.Now().After(deadline) {
-			return "", errors.New("timed out waiting for upterm admin socket")
-		}
-
-		after, err := listSocketCandidates(socketDir)
-		if err != nil {
-			return "", err
-		}
-		for path := range after {
-			if _, ok := before[path]; !ok {
-				return path, nil
-			}
-		}
-
-		if err := sleepWithContext(ctx, 200*time.Millisecond); err != nil {
-			return "", err
-		}
-	}
-}
-
-func waitForCurrentSession(
-	ctx context.Context,
-	uptermPath string,
-	socketPath string,
-	timeout time.Duration,
-) (currentSession, error) {
-	deadline := time.Now().Add(timeout)
-
-	for {
-		if err := ctx.Err(); err != nil {
 			return currentSession{}, err
-		}
-		if time.Now().After(deadline) {
+		case session := <-sessionCh:
+			return session, nil
+		case <-timer.C:
 			return currentSession{}, errors.New("timed out waiting for upterm session metadata")
 		}
-
-		cmd := exec.CommandContext(ctx, uptermPath, "session", "current", "--admin-socket", socketPath, "-o", "json")
-		output, err := cmd.Output()
-		if err == nil {
-			var session currentSession
-			if err := json.Unmarshal(output, &session); err != nil {
-				return currentSession{}, err
-			}
-			return session, nil
-		}
-
-		if err := sleepWithContext(ctx, 200*time.Millisecond); err != nil {
-			return currentSession{}, err
-		}
 	}
 }
 
-func listSocketCandidates(dir string) (map[string]struct{}, error) {
-	entries, err := filepath.Glob(filepath.Join(dir, "*.sock"))
-	if err != nil {
-		return nil, err
-	}
-
-	out := make(map[string]struct{}, len(entries))
-	for _, entry := range entries {
-		out[entry] = struct{}{}
-	}
-	return out, nil
+type sessionOutputParser struct {
+	mu      sync.Mutex
+	once    sync.Once
+	session currentSession
+	readyCh chan currentSession
 }
 
-func userHomeDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return "/root"
+func newSessionOutputParser() *sessionOutputParser {
+	return &sessionOutputParser{
+		readyCh: make(chan currentSession, 1),
 	}
-	return home
+}
+
+func (p *sessionOutputParser) Ready() <-chan currentSession {
+	return p.readyCh
+}
+
+func (p *sessionOutputParser) Consume(line string) {
+	line = strings.TrimSpace(line)
+	switch {
+	case strings.HasPrefix(line, "Session:"):
+		p.mu.Lock()
+		p.session.SessionID = strings.TrimSpace(strings.TrimPrefix(line, "Session:"))
+		session := p.session
+		p.mu.Unlock()
+		p.maybePublish(session)
+	case strings.HasPrefix(line, "Host:"):
+		p.mu.Lock()
+		p.session.Host = strings.TrimSpace(strings.TrimPrefix(line, "Host:"))
+		session := p.session
+		p.mu.Unlock()
+		p.maybePublish(session)
+	case strings.HasPrefix(line, "Command:"):
+		p.mu.Lock()
+		p.session.Command = strings.TrimSpace(strings.TrimPrefix(line, "Command:"))
+		p.mu.Unlock()
+	}
+}
+
+func (p *sessionOutputParser) maybePublish(session currentSession) {
+	if session.SessionID == "" || session.Host == "" {
+		return
+	}
+
+	p.once.Do(func() {
+		p.readyCh <- session
+	})
+}
+
+func streamOutput(
+	reader io.ReadCloser,
+	writer io.Writer,
+	parser *sessionOutputParser,
+	errCh chan<- error,
+) {
+	defer reader.Close()
+
+	scanner := bufio.NewScanner(reader)
+	for scanner.Scan() {
+		line := scanner.Text()
+		parser.Consume(line)
+		if _, err := fmt.Fprintln(writer, line); err != nil {
+			errCh <- err
+			return
+		}
+	}
+
+	errCh <- scanner.Err()
 }
 
 func generatePrivateKey(ctx context.Context) (string, func(), error) {
@@ -233,16 +246,4 @@ func generatePrivateKey(ctx context.Context) (string, func(), error) {
 	return keyPath, func() {
 		_ = os.RemoveAll(dir)
 	}, nil
-}
-
-func sleepWithContext(ctx context.Context, d time.Duration) error {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
 }
