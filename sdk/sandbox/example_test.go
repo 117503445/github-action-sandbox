@@ -18,3 +18,14 @@ func ExampleDefaultCreateSandboxOptions() {
 	// main
 	// ssh://uptermd.upterm.dev:22
 }
+
+func ExampleDefaultListSandboxesOptions() {
+	opts := sandbox.DefaultListSandboxesOptions()
+
+	fmt.Println(opts.GitHubWorkflow)
+	fmt.Println(opts.Limit)
+
+	// Output:
+	// sandbox.yml
+	// 20
+}

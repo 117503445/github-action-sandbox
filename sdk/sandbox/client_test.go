@@ -31,12 +31,153 @@ func TestDefaultCreateSandboxOptions(t *testing.T) {
 	}
 }
 
+func TestDefaultListSandboxesOptions(t *testing.T) {
+	opts := DefaultListSandboxesOptions()
+
+	if opts.GitHubWorkflow != "sandbox.yml" {
+		t.Fatalf("unexpected workflow default: %q", opts.GitHubWorkflow)
+	}
+	if opts.Limit != 20 {
+		t.Fatalf("unexpected limit default: %d", opts.Limit)
+	}
+}
+
 func TestCreateSandboxInvalidOptions(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "")
 
 	_, err := CreateSandbox(context.Background(), CreateSandboxOptions{})
 	if !errors.Is(err, ErrInvalidOptions) {
 		t.Fatalf("expected ErrInvalidOptions, got %v", err)
+	}
+}
+
+func TestListSandboxesInvalidOptions(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "")
+
+	_, err := ListSandboxes(context.Background(), ListSandboxesOptions{
+		GitHubRepository: "acme/widgets",
+	})
+	if !errors.Is(err, ErrInvalidOptions) {
+		t.Fatalf("expected ErrInvalidOptions, got %v", err)
+	}
+
+	_, err = ListSandboxes(context.Background(), ListSandboxesOptions{
+		GitHubRepository: "acme/widgets",
+		GitHubToken:      "token",
+		Limit:            101,
+	})
+	if !errors.Is(err, ErrInvalidOptions) {
+		t.Fatalf("expected ErrInvalidOptions for limit, got %v", err)
+	}
+}
+
+func TestListSandboxesReturnsRecentRunsAndMetadata(t *testing.T) {
+	var state struct {
+		sync.Mutex
+		authHeader string
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		state.Lock()
+		defer state.Unlock()
+
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/widgets/actions/workflows/sandbox.yml/runs":
+			state.authHeader = r.Header.Get("Authorization")
+			writeJSON(t, w, map[string]any{
+				"workflow_runs": []map[string]any{
+					{
+						"id":            int64(123),
+						"display_title": "sandbox-demo-123",
+						"head_branch":   "main",
+						"status":        "in_progress",
+						"conclusion":    "",
+						"html_url":      "https://example.test/runs/123",
+						"created_at":    "2026-04-17T00:00:00Z",
+					},
+					{
+						"id":            int64(122),
+						"display_title": "sandbox-demo-122",
+						"head_branch":   "feature/demo",
+						"status":        "completed",
+						"conclusion":    "cancelled",
+						"html_url":      "https://example.test/runs/122",
+						"created_at":    "2026-04-16T23:59:00Z",
+					},
+				},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/widgets/actions/runs/123/artifacts":
+			writeJSON(t, w, map[string]any{
+				"artifacts": []map[string]any{{
+					"id":   int64(55),
+					"name": "sandbox-demo-123",
+				}},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/widgets/actions/runs/122/artifacts":
+			writeJSON(t, w, map[string]any{"artifacts": []map[string]any{}})
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/widgets/actions/artifacts/55/zip":
+			w.Header().Set("Content-Type", "application/zip")
+			if _, err := w.Write(buildMetadataArchive(t, sandboxMetadata{
+				RequestID:  "demo-123",
+				Status:     "running",
+				SSHHost:    "uptermd.upterm.dev",
+				SSHPort:    22,
+				SSHUser:    "session-token",
+				SSHCommand: "ssh -p 22 session-token@uptermd.upterm.dev",
+			})); err != nil {
+				t.Fatalf("write archive: %v", err)
+			}
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	t.Setenv("GITHUB_API_URL", server.URL)
+	t.Setenv("GITHUB_TOKEN", "env-token")
+
+	items, err := ListSandboxes(context.Background(), ListSandboxesOptions{
+		GitHubRepository: "acme/widgets",
+	})
+	if err != nil {
+		t.Fatalf("ListSandboxes returned error: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 sandboxes, got %d", len(items))
+	}
+
+	first := items[0]
+	if first.ID != "demo-123" {
+		t.Fatalf("unexpected first sandbox id: %q", first.ID)
+	}
+	if first.Status != "running" {
+		t.Fatalf("unexpected first sandbox status: %q", first.Status)
+	}
+	if first.Ref != "main" {
+		t.Fatalf("unexpected first sandbox ref: %q", first.Ref)
+	}
+	if first.SSHCommand != "ssh -p 22 session-token@uptermd.upterm.dev" {
+		t.Fatalf("unexpected first sandbox ssh command: %q", first.SSHCommand)
+	}
+
+	second := items[1]
+	if second.ID != "demo-122" {
+		t.Fatalf("unexpected second sandbox id: %q", second.ID)
+	}
+	if second.Status != "cancelled" {
+		t.Fatalf("unexpected second sandbox status: %q", second.Status)
+	}
+	if second.Ref != "feature/demo" {
+		t.Fatalf("unexpected second sandbox ref: %q", second.Ref)
+	}
+	if second.SSHCommand != "" {
+		t.Fatalf("expected no ssh command without metadata, got %q", second.SSHCommand)
+	}
+
+	state.Lock()
+	defer state.Unlock()
+	if state.authHeader != "Bearer env-token" {
+		t.Fatalf("expected env token auth header, got %q", state.authHeader)
 	}
 }
 

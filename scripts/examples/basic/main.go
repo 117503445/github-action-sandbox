@@ -28,7 +28,7 @@ func main() {
 }
 
 func run() error {
-	if err := loadDotEnv(".env"); err != nil {
+	if err := loadDotEnvIfPresent(".env"); err != nil {
 		return err
 	}
 
@@ -62,6 +62,16 @@ func run() error {
 	fmt.Printf("sandbox ready: %s\n", item.RunURL)
 	fmt.Printf("ssh command: %s\n", item.SSHCommand)
 
+	listCtx, listCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer listCancel()
+
+	listed, err := verifyListAPI(listCtx, repository, workflow, token, item)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("list verification passed: run=%d listed=%d ssh=%s\n", item.RunID, len(listed), item.SSHCommand)
+
 	closeCtx, closeCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer closeCancel()
 	defer func() {
@@ -82,6 +92,39 @@ func run() error {
 
 	fmt.Printf("ssh verification passed\n%s\n", output)
 	return nil
+}
+
+func verifyListAPI(
+	ctx context.Context,
+	repository string,
+	workflow string,
+	token string,
+	created *sandbox.Sandbox,
+) ([]*sandbox.Sandbox, error) {
+	items, err := sandbox.ListSandboxes(ctx, sandbox.ListSandboxesOptions{
+		GitHubRepository: repository,
+		GitHubWorkflow:   workflow,
+		GitHubToken:      token,
+		Limit:            10,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list sandboxes: %w", err)
+	}
+
+	for _, item := range items {
+		if item.RunID != created.RunID {
+			continue
+		}
+		if item.ID != created.ID {
+			return nil, fmt.Errorf("list returned mismatched request id: got %q want %q", item.ID, created.ID)
+		}
+		if item.SSHCommand != created.SSHCommand {
+			return nil, fmt.Errorf("list returned mismatched ssh command: got %q want %q", item.SSHCommand, created.SSHCommand)
+		}
+		return items, nil
+	}
+
+	return nil, fmt.Errorf("created sandbox run %d was not returned by list api", created.RunID)
 }
 
 func verifySSH(ctx context.Context, item *sandbox.Sandbox) (string, error) {
@@ -381,9 +424,12 @@ func cleanTerminalOutput(output string) string {
 	return output
 }
 
-func loadDotEnv(path string) error {
+func loadDotEnvIfPresent(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
 		return fmt.Errorf("read %s: %w", path, err)
 	}
 

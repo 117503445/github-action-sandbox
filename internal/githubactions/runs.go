@@ -12,6 +12,7 @@ type WorkflowRun struct {
 	Name         string    `json:"name"`
 	DisplayTitle string    `json:"display_title"`
 	RunName      string    `json:"run_name"`
+	HeadBranch   string    `json:"head_branch"`
 	Status       string    `json:"status"`
 	Conclusion   string    `json:"conclusion"`
 	HTMLURL      string    `json:"html_url"`
@@ -27,12 +28,16 @@ func (r WorkflowRun) EffectiveStatus() string {
 }
 
 // ListWorkflowRuns returns recent workflow_dispatch runs for one workflow file.
-func (c *Client) ListWorkflowRuns(ctx context.Context, workflow string) ([]WorkflowRun, error) {
+func (c *Client) ListWorkflowRuns(ctx context.Context, workflow string, perPage int) ([]WorkflowRun, error) {
+	if perPage <= 0 {
+		perPage = 20
+	}
+
 	var resp workflowRunsResponse
 	if err := c.doJSON(
 		ctx,
 		"GET",
-		c.workflowPath("/actions/workflows/%s/runs?event=workflow_dispatch&per_page=20", workflow),
+		c.workflowPath("/actions/workflows/%s/runs?event=workflow_dispatch&per_page=%d", workflow, perPage),
 		nil,
 		200,
 		&resp,

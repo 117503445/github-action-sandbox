@@ -40,3 +40,12 @@ type CreateSandboxOptions struct {
 
 	StartupTimeout time.Duration
 }
+
+// ListSandboxesOptions 定义列出 sandbox 所需的输入参数。
+type ListSandboxesOptions struct {
+	GitHubRepository string
+	GitHubWorkflow   string
+	GitHubToken      string
+
+	Limit int
+}

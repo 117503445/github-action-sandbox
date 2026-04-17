@@ -238,7 +238,7 @@ func waitForWorkflowRunStart(
 			return githubactions.WorkflowRun{}, fmt.Errorf("%w: request_id=%s", ErrWorkflowStartTimeout, requestID)
 		}
 
-		runs, err := client.ListWorkflowRuns(ctx, workflow)
+		runs, err := client.ListWorkflowRuns(ctx, workflow, 20)
 		if err != nil {
 			return githubactions.WorkflowRun{}, err
 		}

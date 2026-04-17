@@ -1,6 +1,6 @@
 # github-action-sandbox
 
-一个用于创建和关闭 GitHub Actions sandbox 的 Go SDK。
+一个用于创建、列出和关闭 GitHub Actions sandbox 的 Go SDK。
 
 ## 快速开始
 
@@ -36,13 +36,23 @@ func main() {
 	opts.GitHubRepository = "owner/repo"
 	opts.GitHubToken = os.Getenv("GITHUB_TOKEN")
 
-	item, err := sandbox.CreateSandbox(context.Background(), opts)
-	if err != nil {
-		fmt.Println("create sandbox failed:", err)
-		return
-	}
+item, err := sandbox.CreateSandbox(context.Background(), opts)
+if err != nil {
+	fmt.Println("create sandbox failed:", err)
+	return
+}
 
-	fmt.Println("ssh:", item.SSHCommand)
+items, err := sandbox.ListSandboxes(context.Background(), sandbox.ListSandboxesOptions{
+	GitHubRepository: opts.GitHubRepository,
+	GitHubToken:      opts.GitHubToken,
+})
+if err != nil {
+	fmt.Println("list sandboxes failed:", err)
+	return
+}
+
+fmt.Println("sandboxes:", len(items))
+fmt.Println("ssh:", item.SSHCommand)
 
 	if err := item.Close(context.Background()); err != nil {
 		fmt.Println("close sandbox failed:", err)

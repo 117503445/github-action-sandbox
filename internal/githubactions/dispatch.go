@@ -127,8 +127,11 @@ func (c *Client) newRequest(ctx context.Context, method string, apiPath string, 
 	return req, nil
 }
 
-func (c *Client) workflowPath(format string, workflow string) string {
-	return c.repoPath(format, url.PathEscape(workflow))
+func (c *Client) workflowPath(format string, workflow string, args ...any) string {
+	allArgs := make([]any, 0, len(args)+1)
+	allArgs = append(allArgs, url.PathEscape(workflow))
+	allArgs = append(allArgs, args...)
+	return c.repoPath(format, allArgs...)
 }
 
 func (c *Client) repoPath(format string, args ...any) string {
