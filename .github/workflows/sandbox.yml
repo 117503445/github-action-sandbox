@@ -40,11 +40,7 @@ jobs:
       - name: Install sshdev
         run: |
           set -euo pipefail
-          tmpdir="$(mktemp -d)"
-          trap 'rm -rf "$tmpdir"' EXIT
-          git clone --depth=1 https://github.com/117503445/sshdev "$tmpdir/sshdev"
-          cd "$tmpdir/sshdev"
-          CGO_ENABLED=0 go build -o sshdev ./cmd/sshdev
+          curl -fsSL https://github.com/117503445/sshdev/releases/download/v0.0.0-c207fed/sshdev-linux-amd64 -o sshdev
           sudo install -m 0755 sshdev /usr/local/bin/sshdev
           sshdev run --help | sed -n '1,20p'
 

@@ -17,9 +17,12 @@ func TestRunWritesMetadataFromFakeSSHDevAndPinggy(t *testing.T) {
 	fakeBin := t.TempDir()
 	fakeSSHDevPath := filepath.Join(fakeBin, "sshdev")
 	fakeSSHPath := filepath.Join(fakeBin, "ssh")
+	sshdevArgsPath := filepath.Join(t.TempDir(), "sshdev-args.txt")
+	t.Setenv("SSHDEV_ARG_LOG", sshdevArgsPath)
 
 	fakeSSHDevScript := `#!/bin/sh
 set -eu
+printf '%s\n' "$@" > "$SSHDEV_ARG_LOG"
 exec python3 -m http.server 2222 --bind 127.0.0.1 >/dev/null 2>&1
 `
 	if err := os.WriteFile(fakeSSHDevPath, []byte(fakeSSHDevScript), 0o755); err != nil {
@@ -75,6 +78,13 @@ while :; do sleep 1; done
 			}
 			if !strings.Contains(content, `"ssh_command": "ssh -p 43000 `+expectedUser+`@demo.a.pinggy.link"`) {
 				t.Fatalf("unexpected metadata content: %s", content)
+			}
+			sshdevArgs, err := os.ReadFile(sshdevArgsPath)
+			if err != nil {
+				t.Fatalf("read sshdev args: %v", err)
+			}
+			if !strings.Contains("\n"+string(sshdevArgs)+"\n", "\n--insecure\n") {
+				t.Fatalf("expected sshdev --insecure arg, got: %s", sshdevArgs)
 			}
 			break
 		}

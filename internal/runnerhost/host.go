@@ -66,6 +66,7 @@ func Run(ctx context.Context, opts Options) error {
 
 	sshdevArgs := []string{
 		"run",
+		"--insecure",
 		"--listen", sshdevListenAddr,
 		"--shell", shell.Path,
 	}
